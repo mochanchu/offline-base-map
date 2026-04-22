@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tsunami Evacuation AI Map</title>
+    <title>Tsunami Evacuation Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; }
@@ -17,53 +17,50 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script type="module">
-    // Firebase SDKの読み込み
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // --- 1. Firebase設定の反映 ---
+    // --- 新しいFirebase設定を反映 ---
     const firebaseConfig = {
-        apiKey: "AIzaSyBM486NSYq2qqEbiyGpGB5wr7y0ufiWJ2A",
-        authDomain: "tsunami-evacuation-ai.firebaseapp.com",
-        projectId: "tsunami-evacuation-ai",
-        storageBucket: "tsunami-evacuation-ai.firebasestorage.app",
-        messagingSenderId: "117413661522",
-        appId: "1:117413661522:web:c773374161d5283007c88b",
-        measurementId: "G-2J926VQTC6"
+      apiKey: "AIzaSyCi4No-S47ZWa6PZpQDncly6gveHgYmqLI",
+      authDomain: "tsunami-evacuation-map.firebaseapp.com",
+      databaseURL: "https://tsunami-evacuation-map-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "tsunami-evacuation-map",
+      storageBucket: "tsunami-evacuation-map.firebasestorage.app",
+      messagingSenderId: "729874284256",
+      appId: "1:729874284256:web:2f98a5dbd14c847e629a85"
     };
 
-    // Firebaseの初期化
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // --- 2. Leafletマップの初期化 ---
-    const map = L.map('map').setView([35.6812, 139.7671], 13); // 必要に応じて座標を変更してください
+    // マップ初期化 (埼玉周辺を初期位置にしていますが、自由に変えてください)
+    const map = L.map('map').setView([35.8617, 139.6455], 13); 
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 18
     }).addTo(map);
 
-    // --- 3. 位置情報の取得とFirebaseへの送信 ---
-    function sendLocation() {
+    async function sendLocation() {
         if (!navigator.geolocation) return;
 
         navigator.geolocation.getCurrentPosition(async (position) => {
             try {
+                // 'locations' コレクションに保存
                 await addDoc(collection(db, "locations"), {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
                     timestamp: serverTimestamp(),
                     deviceId: getDeviceId()
                 });
-                console.log("サーバーへ位置情報を送信しました");
+                console.log("Location sent to Firebase!");
             } catch (e) {
-                console.error("送信エラー: ", e);
+                console.error("Error adding document: ", e);
             }
         }, null, { enableHighAccuracy: true });
     }
 
-    // 端末識別IDの取得（ブラウザに保存）
     function getDeviceId() {
         let id = localStorage.getItem('device_id');
         if (!id) {
@@ -73,16 +70,13 @@
         return id;
     }
 
-    // 30秒ごとに送信
-    setInterval(sendLocation, 30000);
-    sendLocation(); // 初回実行
+    setInterval(sendLocation, 30000); // 30秒おき
+    sendLocation();
 
-    // --- 4. Service Workerの登録（オフライン対応） ---
+    // Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js')
-                .then(() => console.log('Service Worker registered'))
-                .catch(err => console.error('SW registration failed:', err));
+            navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
         });
     }
 </script>
