@@ -20,7 +20,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // --- 新しいFirebase設定を反映 ---
     const firebaseConfig = {
       apiKey: "AIzaSyCi4No-S47ZWa6PZpQDncly6gveHgYmqLI",
       authDomain: "tsunami-evacuation-map.firebaseapp.com",
@@ -34,31 +33,55 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // マップ初期化 (埼玉周辺を初期位置にしていますが、自由に変えてください)
-    const map = L.map('map').setView([35.8617, 139.6455], 13); 
+    // --- 地図の初期設定 ---
+    // ズームレベルを「18」に上げました（一般的なカーナビ程度の詳細度）
+    const map = L.map('map').setView([35.8617, 139.6455], 18); 
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
-        maxZoom: 18
+        maxZoom: 19 // 最大ズームを19（さらに詳細）まで許可
     }).addTo(map);
 
-    async function sendLocation() {
+    // 現在地を示すための「青いまる」を定義
+    let currentPosMarker = L.circleMarker([0, 0], {
+        radius: 10,
+        color: '#FFFFFF',      // 枠線は白
+        weight: 2,
+        fillColor: '#007AFF',  // 中はiOS風の青色
+        fillOpacity: 1
+    }).addTo(map);
+
+    async function updateAndSendLocation() {
         if (!navigator.geolocation) return;
 
         navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            // 1. 地図上の「青いまる」の位置を更新
+            currentPosMarker.setLatLng([lat, lng]);
+
+            // 2. 地図の中心を現在地へ移動
+            map.panTo([lat, lng]);
+
             try {
-                // 'locations' コレクションに保存
+                // 3. Firebaseへ送信
                 await addDoc(collection(db, "locations"), {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
+                    lat: lat,
+                    lng: lng,
                     timestamp: serverTimestamp(),
                     deviceId: getDeviceId()
                 });
-                console.log("Location sent to Firebase!");
+                console.log("Location sent!");
             } catch (e) {
-                console.error("Error adding document: ", e);
+                console.error("Error: ", e);
             }
-        }, null, { enableHighAccuracy: true });
+        }, (err) => {
+            console.error("GPS取得失敗: ", err);
+        }, { 
+            enableHighAccuracy: true, // GPS精度を優先
+            timeout: 10000 
+        });
     }
 
     function getDeviceId() {
@@ -70,10 +93,10 @@
         return id;
     }
 
-    setInterval(sendLocation, 30000); // 30秒おき
-    sendLocation();
+    // 更新間隔を「10秒」に短縮（ナビのようにスムーズに動くようになります）
+    setInterval(updateAndSendLocation, 10000);
+    updateAndSendLocation();
 
-    // Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
