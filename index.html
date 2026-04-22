@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Offline Research Map</title>
+    <title>Tsunami Evacuation AI Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; }
@@ -15,23 +15,74 @@
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    // 1. マップの初期化
-    const map = L.map('map').setView([35.6812, 139.7671], 13); // 研究対象の座標に設定
 
-    // 2. タイルレイヤーの設定（OpenStreetMapを使用）
-    // オフライン時はService Workerがこのリクエストを横取りしてキャッシュを返します
+<script type="module">
+    // Firebase SDKの読み込み
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // --- 1. Firebase設定の反映 ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBM486NSYq2qqEbiyGpGB5wr7y0ufiWJ2A",
+        authDomain: "tsunami-evacuation-ai.firebaseapp.com",
+        projectId: "tsunami-evacuation-ai",
+        storageBucket: "tsunami-evacuation-ai.firebasestorage.app",
+        messagingSenderId: "117413661522",
+        appId: "1:117413661522:web:c773374161d5283007c88b",
+        measurementId: "G-2J926VQTC6"
+    };
+
+    // Firebaseの初期化
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- 2. Leafletマップの初期化 ---
+    const map = L.map('map').setView([35.6812, 139.7671], 13); // 必要に応じて座標を変更してください
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 18
     }).addTo(map);
 
-    // 3. Service Workerの登録（オフライン対応用）
+    // --- 3. 位置情報の取得とFirebaseへの送信 ---
+    function sendLocation() {
+        if (!navigator.geolocation) return;
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            try {
+                await addDoc(collection(db, "locations"), {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                    timestamp: serverTimestamp(),
+                    deviceId: getDeviceId()
+                });
+                console.log("サーバーへ位置情報を送信しました");
+            } catch (e) {
+                console.error("送信エラー: ", e);
+            }
+        }, null, { enableHighAccuracy: true });
+    }
+
+    // 端末識別IDの取得（ブラウザに保存）
+    function getDeviceId() {
+        let id = localStorage.getItem('device_id');
+        if (!id) {
+            id = 'user_' + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem('device_id', id);
+        }
+        return id;
+    }
+
+    // 30秒ごとに送信
+    setInterval(sendLocation, 30000);
+    sendLocation(); // 初回実行
+
+    // --- 4. Service Workerの登録（オフライン対応） ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker 登録完了'))
-                .catch(err => console.log('登録失敗:', err));
+                .then(() => console.log('Service Worker registered'))
+                .catch(err => console.error('SW registration failed:', err));
         });
     }
 </script>
