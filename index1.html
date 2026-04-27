@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tsunami Evacuation Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCi4No-S47ZWa6PZpQDncly6gveHgYmqLI",
+      authDomain: "tsunami-evacuation-map.firebaseapp.com",
+      databaseURL: "https://tsunami-evacuation-map-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "tsunami-evacuation-map",
+      storageBucket: "tsunami-evacuation-map.firebasestorage.app",
+      messagingSenderId: "729874284256",
+      appId: "1:729874284256:web:2f98a5dbd14c847e629a85"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- 地図の初期設定 ---
+    // ズームレベルを「18」に上げました（一般的なカーナビ程度の詳細度）
+    const map = L.map('map').setView([35.8617, 139.6455], 18); 
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19 // 最大ズームを19（さらに詳細）まで許可
+    }).addTo(map);
+
+    // 現在地を示すための「青いまる」を定義
+    let currentPosMarker = L.circleMarker([0, 0], {
+        radius: 10,
+        color: '#FFFFFF',      // 枠線は白
+        weight: 2,
+        fillColor: '#007AFF',  // 中はiOS風の青色
+        fillOpacity: 1
+    }).addTo(map);
+
+    async function updateAndSendLocation() {
+        if (!navigator.geolocation) return;
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            // 1. 地図上の「青いまる」の位置を更新
+            currentPosMarker.setLatLng([lat, lng]);
+
+            // 2. 地図の中心を現在地へ移動
+            map.panTo([lat, lng]);
+
+            try {
+                // 3. Firebaseへ送信
+                await addDoc(collection(db, "2026.04.27 test"), {
+                    lat: lat,
+                    lng: lng,
+                    timestamp: serverTimestamp(),
+                    deviceId: getDeviceId()
+                });
+                console.log("Location sent!");
+            } catch (e) {
+                console.error("Error: ", e);
+            }
+        }, (err) => {
+            console.error("GPS取得失敗: ", err);
+        }, { 
+            enableHighAccuracy: true, // GPS精度を優先
+            timeout: 10000 
+        });
+    }
+
+    function getDeviceId() {
+        let id = localStorage.getItem('device_id');
+        if (!id) {
+            id = 'user_' + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem('device_id', id);
+        }
+        return id;
+    }
+
+    // 更新間隔を「10秒」に短縮（ナビのようにスムーズに動くようになります）
+    setInterval(updateAndSendLocation, 10000);
+    updateAndSendLocation();
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
+        });
+    }
+</script>
+</body>
+</html>
