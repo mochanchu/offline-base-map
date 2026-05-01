@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>避難ナビ - 実験用</title>
+    <title>避難マップ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; padding: 0; }
@@ -16,8 +16,8 @@
     </style>
 </head>
 <body>
-    <div id="status">位置情報取得中...</div>
-    <div id="map"></div>
+    
+<div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module">
@@ -56,38 +56,74 @@
     const deviceId = localStorage.getItem('deviceId') || Math.random().toString(36).substring(2, 10);
     localStorage.setItem('deviceId', deviceId);
 
-    const map = L.map('map').setView([36.1085, 139.3625], 16);
+　　//地図の初期設定
+    const map = L.map('map').setView([35.8617, 139.6455], 18);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     
     // エリアを可視化（自分の位置が枠内か確認しやすくするため）
     L.polygon(AREA_POLYGON, { color: 'blue', weight: 1, fillOpacity: 0.05 }).addTo(map);
 
-    let userMarker;
+    // 現在地を示す「青い丸」マーカーの定義
+    let currentPosMarker = L.circleMarker([0, 0], {
+        radius: 10,
+        color: '#FFFFFF',      // 枠線は白
+        weight: 2,
+        fillColor: '#007AFF',  // 中はiOS風の青色
+        fillOpacity: 1
+    }).addTo(map);
 
-    navigator.geolocation.watchPosition(async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+    // 位置更新と送信を行うメイン関数
+    async function updateAndSendLocation() {
+        if (!navigator.geolocation) return;
 
-        // マーカーの更新
-        if (userMarker) {
-            userMarker.setLatLng([lat, lng]);
-        } else {
-            userMarker = L.marker([lat, lng]).addTo(map);
-        }
-        map.panTo([lat, lng]);
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
 
-        // 範囲内判定と送信
-        if (isInside([lat, lng], AREA_POLYGON)) {
-            document.getElementById('status').innerText = "エリア内：データ送信中";
-            document.getElementById('status').style.color = "green";
-            await addDoc(collection(db, "2026-04-27_test"), {
-                lat, lng, deviceId, timestamp: serverTimestamp()
-            });
-        } else {
-            document.getElementById('status').innerText = "エリア外：送信停止中";
-            document.getElementById('status').style.color = "red";
-        }
-    }, (err) => console.error(err), { enableHighAccuracy: true });
+            // 1. マーカーの位置を更新し、地図を移動
+            currentPosMarker.setLatLng([lat, lng]);
+            map.panTo([lat, lng]);
+
+            // 2. 範囲内判定とFirebase送信
+            if (isInside([lat, lng], AREA_POLYGON)) {
+                document.getElementById('status').innerText = "エリア内：10秒ごとに送信中";
+                document.getElementById('status').style.color = "green";
+                
+                try {
+                    await addDoc(collection(db, "2026-04-27_test"), {
+                        lat: lat,
+                        lng: lng,
+                        deviceId: getDeviceId(),
+                        timestamp: serverTimestamp()
+                    });
+                    console.log("Location sent!");
+                } catch (e) {
+                    console.error("Firebase送信エラー: ", e);
+                }
+            } else {
+                document.getElementById('status').innerText = "エリア外：送信停止中";
+                document.getElementById('status').style.color = "red";
+            }
+        }, (err) => {
+            console.error("GPS取得失敗: ", err);
+            document.getElementById('status').innerText = "GPSエラー";
+        }, { 
+            enableHighAccuracy: true,
+            timeout: 10000 
+        });
+    }
+
+    // 10秒ごとに実行
+    setInterval(updateAndSendLocation, 10000);
+    // 初回実行
+    updateAndSendLocation();
+
+    // サービスワーカーの登録（オフライン対応用）
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
+        });
+    }
 </script>
 </body>
 </html>
