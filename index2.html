@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>避難実験用 - 位置情報送信</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #f0f2f5; }
+        #status { font-size: 1.2rem; margin-bottom: 20px; color: #1a73e8; font-weight: bold; }
+        .area-info { font-size: 0.9rem; color: #666; padding: 20px; }
+        button { padding: 15px 30px; font-size: 1rem; border-radius: 30px; border: none; background: #1a73e8; color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="status">実験エリア外（待機中）</div>
+    <button onclick="startExperiment()">実験開始</button>
+    <div class="area-info">※指定された実験エリア内にいる時のみ、<br>位置情報が送信されます。</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCi4No-S47ZWa6PZpQDncly6gveHgYmqLI",
+      authDomain: "tsunami-evacuation-map.firebaseapp.com",
+      projectId: "tsunami-evacuation-map",
+      storageBucket: "tsunami-evacuation-map.firebasestorage.app",
+      messagingSenderId: "729874284256",
+      appId: "1:729874284256:web:2f98a5dbd14c847e629a85"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 指定された4点
+    const AREA_POLYGON = [
+        [36.110889, 139.360278], // 36°06'39.2"N 139°21'37.0"E
+        [36.110306, 139.367194], // 36°06'37.1"N 139°22'01.9"E
+        [36.105889, 139.365111], // 36°06'21.2"N 139°21'54.4"E
+        [36.106222, 139.357861]  // 36°06'22.4"N 139°21'28.3"E
+    ];
+
+    // 多角形の内外判定ロジック (Ray Casting Algorithm)
+    function isInside(point, vs) {
+        const x = point[0], y = point[1];
+        let inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            const xi = vs[i][0], yi = vs[i][1];
+            const xj = vs[j][0], yj = vs[j][1];
+            const intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    const deviceId = Math.random().toString(36).substring(2, 10);
+
+    window.startExperiment = () => {
+        navigator.geolocation.watchPosition(async (pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            if (isInside([lat, lng], AREA_POLYGON)) {
+                document.getElementById('status').innerText = "エリア内：送信中...";
+                document.getElementById('status').style.color = "#34a853";
+                await addDoc(collection(db, "2026-04-27_test"), {
+                    lat, lng, deviceId, timestamp: serverTimestamp()
+                });
+            } else {
+                document.getElementById('status').innerText = "エリア外（停止中）";
+                document.getElementById('status').style.color = "#ea4335";
+            }
+        }, (err) => console.error(err), { enableHighAccuracy: true });
+    };
+</script>
+</body>
+</html>
