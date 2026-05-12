@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>避難実験用 - index3</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100vw; }
+        /* 上部に状態を表示するステータスバー */
+        #status {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(255,255,255,0.9); padding: 10px 20px;
+            border-radius: 20px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-size: 14px; white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">GPS信号を待機中...</div>
+    <div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+    // Firebaseモジュールの読み込み
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // プロジェクト独自のFirebase設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyCi4No-S47ZWa6PZpQDncly6gveHgYmqLI",
+      authDomain: "tsunami-evacuation-map.firebaseapp.com",
+      projectId: "tsunami-evacuation-map",
+      storageBucket: "tsunami-evacuation-map.firebasestorage.app",
+      appId: "1:729874284256:web:2f98a5dbd14c847e629a85"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 【実験エリアの定義】立正大学周辺の4点を指定
+    const AREA_POLYGON = [
+        [36.110889, 139.360278], [36.110306, 139.367194],
+        [36.105889, 139.365111], [36.106222, 139.357861]
+    ];
+
+    // 【内外判定関数】現在地が指定した4点の中にいるかを数学的に計算
+    function isInside(point, vs) {
+        const x = point[0], y = point[1];
+        let inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            const xi = vs[i][0], yi = vs[i][1];
+            const xj = vs[j][0], yj = vs[j][1];
+            const intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    // 【デバイスID管理】ブラウザにIDを保存し、実験中同じ色で表示されるようにする
+    function getDeviceId() {
+        let id = localStorage.getItem('device_id');
+        if (!id) {
+            id = 'user_' + Math.random().toString(36).substring(2, 9);
+            localStorage.setItem('device_id', id);
+        }
+        return id;
+    }
+
+    // 地図の表示設定
+    const map = L.map('map').setView([36.1085, 139.3625], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    
+    // 実験エリアを青い枠で表示
+    L.polygon(AREA_POLYGON, { color: 'blue', weight: 1, fillOpacity: 0.05 }).addTo(map);
+
+    // 【現在地マーカー】青い丸で現在地を表現（iOS風デザイン）
+    let currentPosMarker = L.circleMarker([0, 0], {
+        radius: 10, color: '#FFFFFF', weight: 2, fillColor: '#007AFF', fillOpacity: 1
+    }).addTo(map);
+
+    // 【メイン処理】位置の取得・描画・送信をまとめた関数
+    async function updateAndSendLocation() {
+        if (!navigator.geolocation) return;
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+
+            // 1. 地図上の自分の位置（青い丸）を更新し、画面を追従させる
+            currentPosMarker.setLatLng([lat, lng]);
+            map.panTo([lat, lng]);
+
+            // 2. 実験エリア内にいるかチェック
+            if (isInside([lat, lng], AREA_POLYGON)) {
+                document.getElementById('status').innerText = "エリア内：データを送信中";
+                document.getElementById('status').style.color = "green";
+                
+                try {
+                    // 3. Firebaseの「2026-05-12_test2」コレクションへ保存
+                    await addDoc(collection(db, "2026-05-12_test"), {
+                        lat: lat, lng: lng,
+                        timestamp: serverTimestamp(),
+                        deviceId: getDeviceId()
+                    });
+                } catch (e) { console.error("送信失敗: ", e); }
+            } else {
+                document.getElementById('status').innerText = "エリア外：送信を停止しています";
+                document.getElementById('status').style.color = "red";
+            }
+        }, (err) => console.error(err), { enableHighAccuracy: true });
+    }
+
+    // 10秒ごとにこの処理を繰り返す
+    setInterval(updateAndSendLocation, 10000);
+    updateAndSendLocation(); // 初回起動
+</script>
+</body>
+</html>
